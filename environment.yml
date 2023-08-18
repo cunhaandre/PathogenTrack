@@ -1,4 +1,4 @@
-name: PathogenTrack
+name: PathogenTrack_Custom
 channels:
   - conda-forge
   - bioconda
