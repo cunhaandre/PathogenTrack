@@ -107,16 +107,17 @@ def align(project_id, star_index, input_reads, thread, output): ## do star align
     print("status is %s and output is %s" % (status, stdout))
     return(0)
 
-def classify(project_id, kraken_db, input_reads, thread, confidence, out_reads, out_table, out_report): ## run kraken2
+def classify(project_id, kraken_db, input_reads, thread, confidence, out_reads, out_table_raw, out_table, out_report): ## run kraken2
     check_deps()
     check_dir(project_id)
     input_reads = project_id + '/' + input_reads
     out_reads = project_id + '/' + out_reads
+    out_table_raw = project_id + '/' + out_table_raw
     out_table = project_id + '/' + out_table
     out_report = project_id + '/' + out_report
     
-    cmd = 'kraken2 --db ' + kraken_db + ' --confidence ' + str(confidence) + ' --threads ' + str(thread) + ' --use-names --classified-out ' + out_reads + ' --report ' + out_report + ' '
-    cmd += input_reads + ' | grep -w ^C > ' + out_table
+    cmd = 'kraken2 --db ' + kraken_db + ' --confidence ' + str(confidence) + ' --threads ' + str(thread) + ' --use-names --classified-out ' + out_reads + ' --report ' + out_report + ' --report-minimizer-data ' + ' '
+    cmd += input_reads + ' > ' + out_table_raw + ' ; ' + ' cat ' + out_table_raw + ' | grep -w ^C > ' + out_table
     status, stdout = check_status(cmd)
     print("status is %s and output is %s" % (status, stdout))
     return(0)
@@ -162,9 +163,9 @@ def quant(project_id, barcode, input_reads, input_table, input_report, min_reads
         for line in freport:
             total_count = int(line.strip().split("\t")[1])
             rank_count = int(line.strip().split("\t")[2])
-            current_rank = line.strip().split("\t")[3]
-            taxid = line.strip().split("\t")[4]
-            taxname = line.strip().split("\t")[5].strip()
+            current_rank = line.strip().split("\t")[5]
+            taxid = line.strip().split("\t")[6]
+            taxname = line.strip().split("\t")[7].strip()
             if current_rank == 'U': # skip first line in report
                 continue
             if check_rank(current_rank) < check_rank(last_rank) or check_rank(current_rank) == check_rank(last_rank) == 8: # changed organism
@@ -172,11 +173,11 @@ def quant(project_id, barcode, input_reads, input_table, input_report, min_reads
                 if selected == True:
                     for row in dict(sorted(tmp_dict.items(), key=lambda item: item[1], reverse=True)).keys():
                         if not (selected_taxid and selected_taxname):
-                            selected_taxid = row.strip().split("\t")[4]
-                            selected_taxname = row.strip().split("\t")[5].strip()
+                            selected_taxid = row.strip().split("\t")[6]
+                            selected_taxname = row.strip().split("\t")[7].strip()
                             selected_reads = int(row.strip().split("\t")[2])
-                        tmp_taxid = row.strip().split("\t")[4]
-                        tmp_taxname = row.strip().split("\t")[5].strip()
+                        tmp_taxid = row.strip().split("\t")[6]
+                        tmp_taxname = row.strip().split("\t")[7].strip()
                         if selected_reads >= min_reads:
                             Taxons[tmp_taxid] = selected_taxid + '|' + selected_taxname
                     selected = False
@@ -196,11 +197,11 @@ def quant(project_id, barcode, input_reads, input_table, input_report, min_reads
         if selected == True:
             for row in dict(sorted(tmp_dict.items(), key=lambda item: item[1], reverse=True)).keys():
                 if not (selected_taxid and selected_taxname):
-                    selected_taxid = row.strip().split("\t")[4]
-                    selected_taxname = row.strip().split("\t")[5].strip()
+                    selected_taxid = row.strip().split("\t")[6]
+                    selected_taxname = row.strip().split("\t")[7].strip()
                     selected_reads = int(row.strip().split("\t")[2])
-                tmp_taxid = row.strip().split("\t")[4]
-                tmp_taxname = row.strip().split("\t")[5].strip()
+                tmp_taxid = row.strip().split("\t")[6]
+                tmp_taxname = row.strip().split("\t")[7].strip()
 
                 if selected_reads >= min_reads:
                     Taxons[tmp_taxid] = selected_taxid + '|' + selected_taxname
@@ -286,7 +287,7 @@ def count(project_id, star_index, kraken_db, barcode, read1, read2, pattern, thr
     extract(project_id, read1, read2, pattern, barcode='barcodes.tsv', output='reads_barcoded.fq.gz', ignore_suffix=ignore_suffix)
     filter(project_id, input_reads='reads_barcoded.fq.gz', thread=thread, output='reads_barcoded_clean.fq.gz', trim_poly_x=trim_poly_x, filter_low_complexity=filter_low_complexity, complexity_threshold=complexity_threshold)
     align(project_id, star_index, input_reads='reads_barcoded_clean.fq.gz', thread=thread, output='unmapped_reads.fq')
-    classify(project_id, kraken_db, input_reads='unmapped_reads.fq', thread=thread, confidence=confidence, out_reads='classified_reads.fq', out_table='classified_table.txt', out_report='classified_report.txt')
+    classify(project_id, kraken_db, input_reads='unmapped_reads.fq', thread=thread, confidence=confidence, out_reads='classified_reads.fq', out_table_raw='kraken2_stdout.txt', out_table='classified_table.txt', out_report='classified_report.txt')
     quant(project_id, barcode='barcodes.tsv', input_reads='classified_reads.fq', input_table='classified_table.txt', input_report='classified_report.txt', min_reads=min_reads, output_reads='microbes.fa', output_matrix='microbes.tsv')
     return(0)
 
@@ -411,8 +412,10 @@ def get_args():
                         help='confidence threshold to use [0-1], default is 0.11', required=False)
     parser_classify.add_argument('--out_reads', action='store', default='classified_reads.fq',
                         help='file to output processed reads to', required=False)
+    parser_classify.add_argument('--out_table_raw', action='store', default='kraken2_stdout.txt',
+                        help='file to output raw kraken results to', required=False)
     parser_classify.add_argument('--out_table', action='store', default='classified_table.txt',
-                        help='file to output kraken results to', required=False)
+                        help='file to output filtered kraken results to', required=False)
     parser_classify.add_argument('--out_report', action='store', default='classified_report.txt',
                         help='file to output kraken report to', required=False)
     # Command: quant
@@ -454,7 +457,7 @@ def main():
     elif args.command == "align":
         align(args.project_id, args.star_index, args.input_reads, args.thread, args.output)
     elif args.command == "classify":
-        classify(args.project_id, args.kraken_db, args.input_reads, args.thread, args.confidence, args.out_reads, args.out_table, args.out_report)
+        classify(args.project_id, args.kraken_db, args.input_reads, args.thread, args.confidence, args.out_reads, args.out_table_raw, args.out_table, args.out_report)
     elif args.command == "quant":
         quant(args.project_id, args.barcode, args.input_reads, args.input_table, args.input_report, args.min_reads, args.output_reads, args.output_matrix)
     return
